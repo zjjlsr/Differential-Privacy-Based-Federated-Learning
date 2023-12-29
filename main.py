@@ -144,6 +144,7 @@ if __name__ == '__main__':
         idxs_users = all_clients[begin_index:end_index]
         for idx in idxs_users:
             local = clients[idx]
+            # 客户端训练,训练过程中已经添加噪声
             w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
             w_locals.append(copy.deepcopy(w))
             loss_locals.append(copy.deepcopy(loss))

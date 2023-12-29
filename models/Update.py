@@ -57,12 +57,14 @@ class LocalUpdateDP(object):
             log_probs = net(images)
             loss = self.loss_func(log_probs, labels)
             loss.backward()
+            # 裁剪梯度
             if self.args.dp_mechanism != 'no_dp':
                 self.clip_gradients(net)
             optimizer.step()
             scheduler.step()
             # add noises to parameters
             if self.args.dp_mechanism != 'no_dp':
+                # 添加噪声
                 self.add_noise(net)
             loss_client = loss.item()
         self.lr = scheduler.get_last_lr()[0]
@@ -75,7 +77,7 @@ class LocalUpdateDP(object):
         elif self.args.dp_mechanism == 'Gaussian' or self.args.dp_mechanism == 'MA':
             # Gaussian use 2 norm
             self.per_sample_clip(net, self.args.dp_clip, norm=2)
-
+    # norm表示一范数和二范数，laplace按照一范数裁剪，gaussian按照二范数裁剪
     def per_sample_clip(self, net, clipping, norm):
         grad_samples = [x.grad_sample for x in net.parameters()]
         per_param_norms = [
@@ -91,8 +93,9 @@ class LocalUpdateDP(object):
         # average per sample gradient after clipping and set back gradient
         for param in net.parameters():
             param.grad = param.grad_sample.detach().mean(dim=0)
-
+    # add_noise
     def add_noise(self, net):
+        # 敏感度计算，在每次噪声添加时，都要重新计算敏感度，敏感度=2 * lr * clip / dataset_size
         sensitivity = cal_sensitivity(self.lr, self.args.dp_clip, len(self.idxs_sample))
         state_dict = net.state_dict()
         if self.args.dp_mechanism == 'Laplace':
@@ -137,6 +140,7 @@ class LocalUpdateDPSerial(LocalUpdateDP):
                 log_probs = net(image_serial_batch)
                 loss = self.loss_func(log_probs, labels_serial_batch)
                 loss.backward()
+                # 裁剪梯度
                 if self.args.dp_mechanism != 'no_dp':
                     self.clip_gradients(net)
                 grads = [param.grad.detach().clone() for param in net.parameters()]
