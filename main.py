@@ -118,6 +118,7 @@ if __name__ == '__main__':
     else:
         exit('Error: unrecognized model')
 
+    #?
     # use opacus to wrap model to clip per sample gradient
     if args.dp_mechanism != 'no_dp':
         net_glob = GradSampleModule(net_glob)

@@ -45,10 +45,13 @@ class LocalUpdateDP(object):
             return Gaussian_Simple(epsilon=epsilon_single_query, delta=delta_single_query)
         elif self.args.dp_mechanism == 'MA':
             return Gaussian_MA(epsilon=self.args.dp_epsilon, delta=self.args.dp_delta, q=self.args.dp_sample, epoch=self.times)
-
+    """
+    训练方法。在这个方法中，每个批次的所有样本都会一起进行前向传播和反向传播，然后更新参数。
+    """
     def train(self, net):
         net.train()
         optimizer = torch.optim.SGD(net.parameters(), lr=self.lr)
+        # 调度器会周期性的衰减学习率
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
         loss_client = 0
         for images, labels in self.ldr_train:
@@ -79,20 +82,26 @@ class LocalUpdateDP(object):
             self.per_sample_clip(net, self.args.dp_clip, norm=2)
     # norm表示一范数和二范数，laplace按照一范数裁剪，gaussian按照二范数裁剪
     def per_sample_clip(self, net, clipping, norm):
+        # 依次遍历每层梯度
         grad_samples = [x.grad_sample for x in net.parameters()]
+        # 计算每层参数的范数
         per_param_norms = [
             g.reshape(len(g), -1).norm(norm, dim=-1) for g in grad_samples
         ]
         per_sample_norms = torch.stack(per_param_norms, dim=1).norm(norm, dim=1)
+        # 这行代码计算每个样本的裁剪因子。首先，将裁剪阈值除以每个样本的范数，然后将结果限制在[0, 1]范围内。结果存储在per_sample_clip_factor张量中。
         per_sample_clip_factor = (
             torch.div(clipping, (per_sample_norms + 1e-6))
         ).clamp(max=1.0)
+        # 这行代码将每个样本的裁剪因子应用到对应的梯度样本上。首先，将裁剪因子重塑为与梯度样本相同的形状，然后将裁剪因子乘以梯度样本。
         for grad in grad_samples:
             factor = per_sample_clip_factor.reshape(per_sample_clip_factor.shape + (1,) * (grad.dim() - 1))
             grad.detach().mul_(factor.to(grad.device))
         # average per sample gradient after clipping and set back gradient
+        # 这行代码计算每个参数的平均梯度，并将结果赋值给参数的梯度。这是因为在差分隐私机制中，我们通常使用每个样本的平均梯度来更新参数。
         for param in net.parameters():
             param.grad = param.grad_sample.detach().mean(dim=0)
+
     # add_noise
     def add_noise(self, net):
         # 敏感度计算，在每次噪声添加时，都要重新计算敏感度，敏感度=2 * lr * clip / dataset_size
@@ -107,6 +116,7 @@ class LocalUpdateDP(object):
                 state_dict[k] += torch.from_numpy(np.random.normal(loc=0, scale=sensitivity * self.noise_scale,
                                                                    size=v.shape)).to(self.args.device)
         elif self.args.dp_mechanism == 'MA':
+            # 敏感度为lr * clip / dataset_size
             sensitivity = cal_sensitivity_MA(self.args.lr, self.args.dp_clip, len(self.idxs_sample))
             for k, v in state_dict.items():
                 state_dict[k] += torch.from_numpy(np.random.normal(loc=0, scale=sensitivity * self.noise_scale,
@@ -117,7 +127,10 @@ class LocalUpdateDP(object):
 class LocalUpdateDPSerial(LocalUpdateDP):
     def __init__(self, args, dataset=None, idxs=None):
         super().__init__(args, dataset, idxs)
-
+    """
+    训练方法。在这个方法中，每个批次的样本会被进一步划分为更小的子批次（大小由`args.serial_bs`决定），
+    每个子批次都会进行前向传播和反向传播，然后计算梯度。所有子批次的梯度会被累加起来，然后一起更新参数。
+    """
     def train(self, net):
         net.train()
         # train and update
