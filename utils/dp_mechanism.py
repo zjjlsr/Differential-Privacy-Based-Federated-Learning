@@ -3,12 +3,26 @@ from tensorflow_privacy.compute_noise_from_budget_lib import compute_noise
 
 
 def cal_sensitivity(lr, clip, dataset_size):
+    """
+    @description: 2 * lr * clip / dataset_size
+    @param lr:
+    @param clip:
+    @param dataset_size:
+    @return:
+    """
     return 2 * lr * clip / dataset_size
 
 
 #     return 2 * lr * clip
 
 def cal_sensitivity_MA(lr, clip, dataset_size):
+    """
+    @description: lr * clip / dataset_size
+    @param lr:
+    @param clip:
+    @param dataset_size:
+    @return:
+    """
     return lr * clip / dataset_size
 
 

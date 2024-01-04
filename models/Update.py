@@ -82,18 +82,25 @@ class LocalUpdateDP(object):
             self.per_sample_clip(net, self.args.dp_clip, norm=2)
     # norm表示一范数和二范数，laplace按照一范数裁剪，gaussian按照二范数裁剪
     def per_sample_clip(self, net, clipping, norm):
-        # 依次遍历每层梯度
+        """
+        @description: 对每个样本按范数阈值进行裁剪，并平均每个样本的梯度作为最终梯度 ★★★
+        @param net:神经网络
+        @param clipping: 裁剪阈值
+        @param norm: 第几范数
+        """
+        # 获取每层，每个样本的梯度
         grad_samples = [x.grad_sample for x in net.parameters()]
-        # 计算每层参数的范数
+        # 对每个样本计算梯度范数
         per_param_norms = [
             g.reshape(len(g), -1).norm(norm, dim=-1) for g in grad_samples
         ]
         per_sample_norms = torch.stack(per_param_norms, dim=1).norm(norm, dim=1)
-        # 这行代码计算每个样本的裁剪因子。首先，将裁剪阈值除以每个样本的范数，然后将结果限制在[0, 1]范围内。结果存储在per_sample_clip_factor张量中。
+        # 这行代码计算每个样本的裁剪因子。首先，将裁剪阈值除以每个样本的范数，然后将结果限制在[0, 1]范围内。结果存储在per_sample_clip_factor张量中，加1e-6为了防止除数为0
         per_sample_clip_factor = (
             torch.div(clipping, (per_sample_norms + 1e-6))
         ).clamp(max=1.0)
         # 这行代码将每个样本的裁剪因子应用到对应的梯度样本上。首先，将裁剪因子重塑为与梯度样本相同的形状，然后将裁剪因子乘以梯度样本。
+        # 梯度 = 裁剪阈值/（梯度范数+1e-6）* 梯度
         for grad in grad_samples:
             factor = per_sample_clip_factor.reshape(per_sample_clip_factor.shape + (1,) * (grad.dim() - 1))
             grad.detach().mul_(factor.to(grad.device))

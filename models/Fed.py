@@ -8,6 +8,11 @@ from torch import nn
 
 
 def FedAvg(w):
+    """
+    @description:FedSgd
+    @param w:
+    @return:
+    """
     w_avg = copy.deepcopy(w[0])
     for k in w_avg.keys():
         for i in range(1, len(w)):
@@ -15,7 +20,14 @@ def FedAvg(w):
         w_avg[k] = torch.div(w_avg[k], len(w))
     return w_avg
 
+
 def FedWeightAvg(w, size):
+    """
+    @description:FedWAvg
+    @param w:
+    @param size:
+    @return:
+    """
     totalSize = sum(size)
     w_avg = copy.deepcopy(w[0])
     for k in w_avg.keys():
