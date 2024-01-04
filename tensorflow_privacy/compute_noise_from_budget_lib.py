@@ -42,25 +42,25 @@ def apply_dp_sgd_analysis(q, sigma, steps, orders, delta):
 
 # 下午从这里开始看 bro
 # 好的bro
-def compute_noise(n, batch_size, target_epsilon, epochs, delta, noise_lbd): # pylint: disable=invalid-name
+def compute_noise(n, sample_rate, target_epsilon, times, delta, noise_lbd): # pylint: disable=invalid-name
     """
       @description:Compute noise based on the given hyperparameters.
       @param n:
-      @param batch_size: 客户端所有样本的采样率，即客户端总样本数/总样本数
+      @param sample_rate: 客户端所有样本的采样率，即客户端总样本数/总样本数
       @param target_epsilon:
-      @param epochs: 客户端在执行完所有epoch后的总训练轮次
+      @param times: 客户端在执行完所有epoch后的总训练轮次
       @param delta:
       @param noise_lbd: 噪声下界 nosie lower bound，用于初始化噪声
       @return:
    """
     # 每个轮次的采样率，即客户端采样率/本地训练轮次
-    q = batch_size / n
+    q = sample_rate / n
     if q > 1:
         raise app.UsageError('n must be larger than the batch size.')
     orders = ([1.25, 1.5, 1.75, 2., 2.25, 2.5, 3., 3.5, 4., 4.5] +
               list(range(5, 64)) + [128, 256, 512])
     # math.ceil() 向上取整
-    steps = int(math.ceil(epochs * n / batch_size))
+    steps = int(math.ceil(times * n / sample_rate))
 
     init_noise = noise_lbd  # minimum possible noise
     init_epsilon, _ = apply_dp_sgd_analysis(q, init_noise, steps, orders, delta)
