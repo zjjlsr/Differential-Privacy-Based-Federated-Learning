@@ -27,10 +27,12 @@ class LocalUpdateDP(object):
     def __init__(self, args, dataset=None, idxs=None):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
+        # idxs是图片索引，随机选取采样率 * 总图片数量张图片
         self.idxs_sample = np.random.choice(list(idxs), int(self.args.dp_sample * len(idxs)), replace=False)
         self.ldr_train = DataLoader(DatasetSplit(dataset, self.idxs_sample), batch_size=len(self.idxs_sample),
                                     shuffle=True)
         self.idxs = idxs
+        # 每个客户端总共会进行多少次查询函数，也就是训练多少次
         self.times = self.args.epochs * self.args.frac
         self.lr = args.lr
         self.noise_scale = self.calculate_noise_scale()
@@ -54,6 +56,7 @@ class LocalUpdateDP(object):
         # 调度器会周期性的衰减学习率
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=self.args.lr_decay)
         loss_client = 0
+        # 只进行一个批次的训练
         for images, labels in self.ldr_train:
             images, labels = images.to(self.args.device), labels.to(self.args.device)
             net.zero_grad()

@@ -28,52 +28,64 @@ from tensorflow_privacy.rdp_accountant import get_privacy_spent
 
 
 def apply_dp_sgd_analysis(q, sigma, steps, orders, delta):
-  """Compute and print results of DP-SGD analysis."""
+    """Compute and print results of DP-SGD analysis."""
 
-  # compute_rdp requires that sigma be the ratio of the standard deviation of
-  # the Gaussian noise to the l2-sensitivity of the function to which it is
-  # added. Hence, sigma here corresponds to the `noise_multiplier` parameter
-  # in the DP-SGD implementation found in privacy.optimizers.dp_optimizer
-  rdp = compute_rdp(q, sigma, steps, orders)
+    # compute_rdp requires that sigma be the ratio of the standard deviation of
+    # the Gaussian noise to the l2-sensitivity of the function to which it is
+    # added. Hence, sigma here corresponds to the `noise_multiplier` parameter
+    # in the DP-SGD implementation found in privacy.optimizers.dp_optimizer
+    rdp = compute_rdp(q, sigma, steps, orders)
 
-  eps, _, opt_order = get_privacy_spent(orders, rdp, target_delta=delta)
+    eps, _, opt_order = get_privacy_spent(orders, rdp, target_delta=delta)
 
-  return eps, opt_order
+    return eps, opt_order
 
+# 下午从这里开始看 bro
+# 好的bro
+def compute_noise(n, batch_size, target_epsilon, epochs, delta, noise_lbd): # pylint: disable=invalid-name
+    """
+      @description:Compute noise based on the given hyperparameters.
+      @param n:
+      @param batch_size: 客户端所有样本的采样率，即客户端总样本数/总样本数
+      @param target_epsilon:
+      @param epochs: 客户端在执行完所有epoch后的总训练轮次
+      @param delta:
+      @param noise_lbd: 噪声下界 nosie lower bound，用于初始化噪声
+      @return:
+   """
+    # 每个轮次的采样率，即客户端采样率/本地训练轮次
+    q = batch_size / n
+    if q > 1:
+        raise app.UsageError('n must be larger than the batch size.')
+    orders = ([1.25, 1.5, 1.75, 2., 2.25, 2.5, 3., 3.5, 4., 4.5] +
+              list(range(5, 64)) + [128, 256, 512])
+    # math.ceil() 向上取整
+    steps = int(math.ceil(epochs * n / batch_size))
 
-def compute_noise(n, batch_size, target_epsilon, epochs, delta, noise_lbd):
-  """Compute noise based on the given hyperparameters."""
-  q = batch_size / n  # q - the sampling ratio.
-  if q > 1:
-    raise app.UsageError('n must be larger than the batch size.')
-  orders = ([1.25, 1.5, 1.75, 2., 2.25, 2.5, 3., 3.5, 4., 4.5] +
-            list(range(5, 64)) + [128, 256, 512])
-  steps = int(math.ceil(epochs * n / batch_size))
+    init_noise = noise_lbd  # minimum possible noise
+    init_epsilon, _ = apply_dp_sgd_analysis(q, init_noise, steps, orders, delta)
 
-  init_noise = noise_lbd  # minimum possible noise
-  init_epsilon, _ = apply_dp_sgd_analysis(q, init_noise, steps, orders, delta)
+    if init_epsilon < target_epsilon:  # noise_lbd was an overestimate
+        print('min_noise too large for target epsilon.')
+        return 0
 
-  if init_epsilon < target_epsilon:  # noise_lbd was an overestimate
-    print('min_noise too large for target epsilon.')
-    return 0
+    cur_epsilon = init_epsilon
+    max_noise, min_noise = init_noise, 0
 
-  cur_epsilon = init_epsilon
-  max_noise, min_noise = init_noise, 0
+    # doubling to find the right range
+    while cur_epsilon > target_epsilon:  # until noise is large enough
+        max_noise, min_noise = max_noise * 2, max_noise
+        cur_epsilon, _ = apply_dp_sgd_analysis(q, max_noise, steps, orders, delta)
 
-  # doubling to find the right range
-  while cur_epsilon > target_epsilon:  # until noise is large enough
-    max_noise, min_noise = max_noise * 2, max_noise
-    cur_epsilon, _ = apply_dp_sgd_analysis(q, max_noise, steps, orders, delta)
+    def epsilon_fn(noise):  # should return 0 if guess_epsilon==target_epsilon
+        guess_epsilon = apply_dp_sgd_analysis(q, noise, steps, orders, delta)[0]
+        return guess_epsilon - target_epsilon
 
-  def epsilon_fn(noise):  # should return 0 if guess_epsilon==target_epsilon
-    guess_epsilon = apply_dp_sgd_analysis(q, noise, steps, orders, delta)[0]
-    return guess_epsilon - target_epsilon
-
-  target_noise = bisect(epsilon_fn, min_noise, max_noise)
-  print(
-      'DP-SGD with sampling rate = {:.3g}% and noise_multiplier = {} iterated'
-      ' over {} steps satisfies'.format(100 * q, target_noise, steps),
-      end=' ')
-  print('differential privacy with eps = {:.3g} and delta = {}.'.format(
-      target_epsilon, delta))
-  return target_noise
+    target_noise = bisect(epsilon_fn, min_noise, max_noise)
+    print(
+        'DP-SGD with sampling rate = {:.3g}% and noise_multiplier = {} iterated'
+        ' over {} steps satisfies'.format(100 * q, target_noise, steps),
+        end=' ')
+    print('differential privacy with eps = {:.3g} and delta = {}.'.format(
+        target_epsilon, delta))
+    return target_noise
