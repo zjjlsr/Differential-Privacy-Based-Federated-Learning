@@ -70,7 +70,7 @@ class LocalUpdateDP(object):
             scheduler.step()
             # add noises to parameters
             if self.args.dp_mechanism != 'no_dp':
-                # 添加噪声
+                # 添加噪声，噪声是在每个小批次训练结束后添加的
                 self.add_noise(net)
             loss_client = loss.item()
         self.lr = scheduler.get_last_lr()[0]

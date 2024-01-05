@@ -27,15 +27,15 @@ from tensorflow_privacy.rdp_accountant import compute_rdp  # pylint: disable=g-i
 from tensorflow_privacy.rdp_accountant import get_privacy_spent
 
 
-def apply_dp_sgd_analysis(q, sigma, steps, orders, delta):
+def apply_dp_sgd_analysis(q, noise_multiplier, steps, orders, delta):
     """Compute and print results of DP-SGD analysis."""
 
     # compute_rdp requires that sigma be the ratio of the standard deviation of
     # the Gaussian noise to the l2-sensitivity of the function to which it is
     # added. Hence, sigma here corresponds to the `noise_multiplier` parameter
     # in the DP-SGD implementation found in privacy.optimizers.dp_optimizer
-    rdp = compute_rdp(q, sigma, steps, orders)
-
+    rdp = compute_rdp(q, noise_multiplier, steps, orders)
+    # 这些步骤符合纸上写的epsilon计算公式，根据RDP和delta和α计算最小的epsilon
     eps, _, opt_order = get_privacy_spent(orders, rdp, target_delta=delta)
 
     return eps, opt_order
@@ -47,10 +47,10 @@ def compute_noise(n, sample_rate, target_epsilon, times, delta, noise_lbd): # py
       @description:Compute noise based on the given hyperparameters.
       @param n:
       @param sample_rate: 客户端所有样本的采样率，即客户端总样本数/总样本数
-      @param target_epsilon:
+      @param target_epsilon:总的dp-ε
       @param times: 客户端在执行完所有epoch后的总训练轮次
       @param delta:
-      @param noise_lbd: 噪声下界 nosie lower bound，用于初始化噪声
+      @param noise_lbd: 噪声乘子下界 noise multiplier lower bound，用于初始化噪声 默认为1e-5
       @return:
    """
     # 每个轮次的采样率，即客户端采样率/本地训练轮次
@@ -64,7 +64,7 @@ def compute_noise(n, sample_rate, target_epsilon, times, delta, noise_lbd): # py
 
     init_noise = noise_lbd  # minimum possible noise
     init_epsilon, _ = apply_dp_sgd_analysis(q, init_noise, steps, orders, delta)
-
+    # 如果隐私预算过小，则返回0
     if init_epsilon < target_epsilon:  # noise_lbd was an overestimate
         print('min_noise too large for target epsilon.')
         return 0
@@ -73,6 +73,7 @@ def compute_noise(n, sample_rate, target_epsilon, times, delta, noise_lbd): # py
     max_noise, min_noise = init_noise, 0
 
     # doubling to find the right range
+    # 通过不断尝试噪声乘子，直到噪声乘子大于等于target_epsilon，本质上就是遍历高斯噪声标准差
     while cur_epsilon > target_epsilon:  # until noise is large enough
         max_noise, min_noise = max_noise * 2, max_noise
         cur_epsilon, _ = apply_dp_sgd_analysis(q, max_noise, steps, orders, delta)
@@ -80,7 +81,7 @@ def compute_noise(n, sample_rate, target_epsilon, times, delta, noise_lbd): # py
     def epsilon_fn(noise):  # should return 0 if guess_epsilon==target_epsilon
         guess_epsilon = apply_dp_sgd_analysis(q, noise, steps, orders, delta)[0]
         return guess_epsilon - target_epsilon
-
+    # target_noise就是噪声乘子
     target_noise = bisect(epsilon_fn, min_noise, max_noise)
     print(
         'DP-SGD with sampling rate = {:.3g}% and noise_multiplier = {} iterated'
