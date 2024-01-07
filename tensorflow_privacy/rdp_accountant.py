@@ -392,9 +392,9 @@ def compute_rdp(q, noise_multiplier, steps, orders):
   if np.isscalar(orders):
     rdp = _compute_rdp(q, noise_multiplier, orders)
   else:
+    # 遍历orders，计算每个order的RDP，返回的rdp是一个list
     rdp = np.array(
         [_compute_rdp(q, noise_multiplier, order) for order in orders])
-
   return rdp * steps
 
 
@@ -638,7 +638,7 @@ def get_privacy_spent(orders, rdp, target_eps=None, target_delta=None):
       be `None`.
 
   Returns:
-    A tuple of epsilon, delta, and the optimal order.
+    A tuple of epsilon, delta, and the optimal order.返回的这个order没有用到
 
   Raises:
     ValueError: If target_eps and target_delta are messed up.
